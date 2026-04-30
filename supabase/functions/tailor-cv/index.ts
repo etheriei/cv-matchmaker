@@ -11,8 +11,25 @@ Deno.serve(async (req) => {
 
   try {
     const { cvText, jobDescription } = await req.json();
-    if (!cvText || !jobDescription) {
-      return new Response(JSON.stringify({ error: "Missing cvText or jobDescription" }), {
+    const MAX_CV = 15_000;
+    const MAX_JD = 10_000;
+    if (typeof cvText !== "string" || cvText.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "Missing or invalid cvText" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (typeof jobDescription !== "string" || jobDescription.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "Missing or invalid jobDescription" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (cvText.length > MAX_CV) {
+      return new Response(JSON.stringify({ error: `CV text too large (max ${MAX_CV} characters)` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (jobDescription.length > MAX_JD) {
+      return new Response(JSON.stringify({ error: `Job description too large (max ${MAX_JD} characters)` }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -124,7 +141,7 @@ Return a tailored CV, key improvements, and a full ATS report.`;
     });
   } catch (e) {
     console.error("tailor-cv error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+    return new Response(JSON.stringify({ error: "An unexpected error occurred. Please try again." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
