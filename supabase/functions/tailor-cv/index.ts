@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `You are a senior CV optimisation and ATS (Applicant Tracking System) expert.
 Rewrite the CV to better match the job description WITHOUT fabricating experience.
-Use plain text only. NEVER use markdown formatting: no asterisks (*), no underscores (_), no backticks, no hashes (#), no bold, no italics. Use plain UPPERCASE for section headings and hyphens (-) for bullets.`;
+Use plain text only. NEVER use markdown formatting: no asterisks (*), no underscores (_), no backticks, no hashes (#), no bold, no italics. Use plain UPPERCASE for section headings and hyphens (-) for bullets.
+STRICT PUNCTUATION RULE: NEVER use em dashes (—) or en dashes (–) anywhere in any output field. Do not use them in the tailored CV, improvements, or ATS report. Replace any dash-style pause with a comma, a period, a colon, or simply rewrite the sentence. Only the regular hyphen-minus (-) is allowed, and only for bullet points or compound words.`;
 
     const userPrompt = `CV:
 ${cvText}
@@ -132,7 +133,14 @@ Return a tailored CV, key improvements, and a full ATS report.`;
 
     // Defensive: strip any stray markdown the model might still add
     const stripMd = (s: string) =>
-      s.replace(/\*\*/g, "").replace(/\*/g, "").replace(/^#+\s*/gm, "").replace(/`/g, "");
+      s
+        .replace(/\*\*/g, "")
+        .replace(/\*/g, "")
+        .replace(/^#+\s*/gm, "")
+        .replace(/`/g, "")
+        // Remove em/en dashes (and common variants) — replace with comma + space when used as a pause
+        .replace(/\s*[—–−]\s*/g, ", ")
+        .replace(/[—–−]/g, ",");
     args.tailoredCv = stripMd(String(args.tailoredCv ?? ""));
     args.improvements = (args.improvements ?? []).map((i: string) => stripMd(String(i)));
 
