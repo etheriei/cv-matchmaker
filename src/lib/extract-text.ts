@@ -17,8 +17,9 @@ export async function extractTextFromFile(file: File): Promise<string> {
 async function extractPdf(file: File): Promise<string> {
   // Dynamic import so pdfjs only loads in the browser
   const pdfjs = await import("pdfjs-dist");
-  // @ts-expect-error — Vite ?url import for the worker
-  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  const workerUrl = (
+    await import("pdfjs-dist/build/pdf.worker.min.mjs?url" as string)
+  ).default as string;
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
   const arrayBuffer = await file.arrayBuffer();
