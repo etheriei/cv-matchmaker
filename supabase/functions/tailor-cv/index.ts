@@ -48,7 +48,7 @@ ${cvText}
 JOB DESCRIPTION:
 ${jobDescription}
 
-Return a tailored CV, key improvements, and a full ATS report.`;
+Return a tailored CV, key improvements, a full ATS report, a fit score with reasoning, a focused keyword gap analysis (top 10 JD keywords split into present/missing), and a single role positioning line.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -100,8 +100,39 @@ Return a tailored CV, key improvements, and a full ATS report.`;
                   required: ["score", "matchedKeywords", "missingKeywords", "formattingIssues", "sectionCheck", "suggestions"],
                   additionalProperties: false,
                 },
+                fit: {
+                  type: "object",
+                  description: "Overall candidate-job fit assessment, separate from ATS keyword score.",
+                  properties: {
+                    matchPercent: { type: "number", description: "Overall fit 0-100 based on experience, skills, seniority, and domain alignment." },
+                    strongestMatch: { type: "string", description: "One sentence: the candidate's strongest match to the role." },
+                    weakestGap: { type: "string", description: "One sentence: the most significant gap or weakness vs the role." },
+                    hiringLikelihood: { type: "string", description: "One sentence: overall likelihood of being hired and a recommendation on whether to apply." },
+                  },
+                  required: ["matchPercent", "strongestMatch", "weakestGap", "hiringLikelihood"],
+                  additionalProperties: false,
+                },
+                keywordGap: {
+                  type: "object",
+                  description: "Top 10 JD keywords, split into present and missing.",
+                  properties: {
+                    topKeywords: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Exactly the top 10 most important keywords/skills from the job description, ordered by importance.",
+                    },
+                    present: { type: "array", items: { type: "string" }, description: "Subset of topKeywords already present in the tailored CV." },
+                    missing: { type: "array", items: { type: "string" }, description: "Subset of topKeywords NOT present (or weak) in the tailored CV." },
+                  },
+                  required: ["topKeywords", "present", "missing"],
+                  additionalProperties: false,
+                },
+                positioningLine: {
+                  type: "string",
+                  description: "A single sentence positioning statement, e.g. 'Positioning you as a mid-level Product Designer focused on UX systems and UI execution.' Plain text, no markdown, no dashes.",
+                },
               },
-              required: ["tailoredCv", "improvements", "ats"],
+              required: ["tailoredCv", "improvements", "ats", "fit", "keywordGap", "positioningLine"],
               additionalProperties: false,
             },
           },
@@ -149,6 +180,20 @@ Return a tailored CV, key improvements, and a full ATS report.`;
       args.ats.missingKeywords = arr(args.ats.missingKeywords);
       args.ats.formattingIssues = arr(args.ats.formattingIssues);
       args.ats.suggestions = arr(args.ats.suggestions);
+    }
+    if (args.fit && typeof args.fit === "object") {
+      args.fit.strongestMatch = stripMd(String(args.fit.strongestMatch ?? ""));
+      args.fit.weakestGap = stripMd(String(args.fit.weakestGap ?? ""));
+      args.fit.hiringLikelihood = stripMd(String(args.fit.hiringLikelihood ?? ""));
+    }
+    if (args.keywordGap && typeof args.keywordGap === "object") {
+      const arr = (a: any) => Array.isArray(a) ? a.map((x: string) => stripMd(String(x))) : a;
+      args.keywordGap.topKeywords = arr(args.keywordGap.topKeywords);
+      args.keywordGap.present = arr(args.keywordGap.present);
+      args.keywordGap.missing = arr(args.keywordGap.missing);
+    }
+    if (typeof args.positioningLine === "string") {
+      args.positioningLine = stripMd(args.positioningLine);
     }
 
     return new Response(JSON.stringify(args), {
