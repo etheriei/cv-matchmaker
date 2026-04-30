@@ -143,6 +143,13 @@ Return a tailored CV, key improvements, and a full ATS report.`;
         .replace(/[—–−]/g, ",");
     args.tailoredCv = stripMd(String(args.tailoredCv ?? ""));
     args.improvements = (args.improvements ?? []).map((i: string) => stripMd(String(i)));
+    if (args.ats && typeof args.ats === "object") {
+      const arr = (a: any) => Array.isArray(a) ? a.map((x: string) => stripMd(String(x))) : a;
+      args.ats.matchedKeywords = arr(args.ats.matchedKeywords);
+      args.ats.missingKeywords = arr(args.ats.missingKeywords);
+      args.ats.formattingIssues = arr(args.ats.formattingIssues);
+      args.ats.suggestions = arr(args.ats.suggestions);
+    }
 
     return new Response(JSON.stringify(args), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
