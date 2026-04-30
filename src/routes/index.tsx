@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
   Upload, FileText, Sparkles, Copy, Check, AlertCircle,
-  Download, ShieldCheck, ListChecks,
+  Download, ShieldCheck, ListChecks, Target, Quote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +28,19 @@ type AtsReport = {
   formattingIssues: string[];
   sectionCheck: SectionCheck;
   suggestions: string[];
+};
+
+type FitReport = {
+  matchPercent: number;
+  strongestMatch: string;
+  weakestGap: string;
+  hiringLikelihood: string;
+};
+
+type KeywordGap = {
+  topKeywords: string[];
+  present: string[];
+  missing: string[];
 };
 
 export const Route = createFileRoute("/")({
@@ -66,6 +79,9 @@ function Index() {
   const [tailoredCv, setTailoredCv] = useState("");
   const [improvements, setImprovements] = useState<string[]>([]);
   const [ats, setAts] = useState<AtsReport | null>(null);
+  const [fit, setFit] = useState<FitReport | null>(null);
+  const [keywordGap, setKeywordGap] = useState<KeywordGap | null>(null);
+  const [positioningLine, setPositioningLine] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,6 +121,9 @@ function Index() {
     setTailoredCv("");
     setImprovements([]);
     setAts(null);
+    setFit(null);
+    setKeywordGap(null);
+    setPositioningLine("");
 
     try {
       const { data, error } = await supabase.functions.invoke("tailor-cv", {
@@ -116,6 +135,9 @@ function Index() {
       setTailoredCv(data.tailoredCv ?? "");
       setImprovements(Array.isArray(data.improvements) ? data.improvements : []);
       setAts(data.ats ?? null);
+      setFit(data.fit ?? null);
+      setKeywordGap(data.keywordGap ?? null);
+      setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
 
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
@@ -242,6 +264,96 @@ function Index() {
 
         {tailoredCv && !loading && (
           <section id="results" className="mt-10 space-y-6">
+            {fit && (
+              <Card className="p-6 md:p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Fit Score
+                  </h2>
+                  <div className="text-right">
+                    <div className={`text-3xl font-semibold ${scoreColor(fit.matchPercent)}`}>
+                      {fit.matchPercent}
+                      <span className="text-base text-muted-foreground">%</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">overall match</div>
+                  </div>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-6">
+                  <div
+                    className="h-full bg-foreground/80 transition-all"
+                    style={{ width: `${Math.min(100, Math.max(0, fit.matchPercent))}%` }}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-md border border-border p-4">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Strongest match</div>
+                    <div className="text-sm text-foreground">{fit.strongestMatch}</div>
+                  </div>
+                  <div className="rounded-md border border-border p-4">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Weakest gap</div>
+                    <div className="text-sm text-foreground">{fit.weakestGap}</div>
+                  </div>
+                  <div className="rounded-md border border-border p-4">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Hiring likelihood</div>
+                    <div className="text-sm text-foreground">{fit.hiringLikelihood}</div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {positioningLine && (
+              <Card className="p-6 md:p-8 shadow-sm bg-muted/40">
+                <h2 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                  <Quote className="h-4 w-4" /> Role positioning
+                </h2>
+                <p className="text-base md:text-lg text-foreground leading-snug">
+                  {positioningLine}
+                </p>
+              </Card>
+            )}
+
+            {keywordGap && keywordGap.topKeywords?.length > 0 && (
+              <Card className="p-6 md:p-8 shadow-sm">
+                <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <ListChecks className="h-5 w-5" />
+                  Keyword Gap (Top 10)
+                </h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground mb-2">
+                      In your CV ({keywordGap.present.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {keywordGap.present.length === 0 && (
+                        <span className="text-xs text-muted-foreground">None of the top keywords detected</span>
+                      )}
+                      {keywordGap.present.map((k) => (
+                        <span key={k} className="text-xs px-2 py-1 rounded bg-muted text-foreground inline-flex items-center gap-1">
+                          <Check className="h-3 w-3" /> {k}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground mb-2">
+                      Missing ({keywordGap.missing.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {keywordGap.missing.length === 0 && (
+                        <span className="text-xs text-muted-foreground">All top keywords covered</span>
+                      )}
+                      {keywordGap.missing.map((k) => (
+                        <span key={k} className="text-xs px-2 py-1 rounded border border-destructive/40 text-foreground inline-flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3 text-destructive" /> {k}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {ats && (
               <Card className="p-6 md:p-8 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
