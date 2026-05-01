@@ -41,6 +41,32 @@ export function generateCvPdf(cvText: string, fileName = "tailored-cv.pdf") {
     }
   };
 
+  // Match URLs and bare emails. We'll also normalize emails to mailto: links.
+  const URL_REGEX = /\b((?:https?:\/\/|www\.)[^\s,;)<>"']+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+  const drawLineWithLinks = (text: string, x: number, baselineY: number) => {
+    doc.text(text, x, baselineY);
+    URL_REGEX.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    const fontSize = doc.getFontSize();
+    while ((m = URL_REGEX.exec(text)) !== null) {
+      const raw = m[0].replace(/[.,;:)\]]+$/, "");
+      const start = m.index;
+      const before = text.slice(0, start);
+      const beforeWidth = doc.getTextWidth(before);
+      const linkWidth = doc.getTextWidth(raw);
+      let url = raw;
+      if (/^www\./i.test(url)) url = "https://" + url;
+      else if (/^[^\s@]+@[^\s@]+$/.test(url)) url = "mailto:" + url;
+      // Underline the link
+      const underlineY = baselineY + 1.5;
+      doc.setDrawColor(0, 0, 238);
+      doc.line(x + beforeWidth, underlineY, x + beforeWidth + linkWidth, underlineY);
+      // Clickable area
+      doc.link(x + beforeWidth, baselineY - fontSize, linkWidth, fontSize + 2, { url });
+    }
+  };
+
   for (const raw of lines) {
     const line = raw.replace(/\s+$/g, "");
     if (line.trim() === "") {
@@ -67,7 +93,7 @@ export function generateCvPdf(cvText: string, fileName = "tailored-cv.pdf") {
     const wrapped = doc.splitTextToSize(line, maxWidth) as string[];
     for (const w of wrapped) {
       ensureSpace(lineHeight);
-      doc.text(w, marginX, y);
+      drawLineWithLinks(w, marginX, y);
       y += lineHeight;
     }
   }
