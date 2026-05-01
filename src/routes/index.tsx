@@ -334,7 +334,7 @@ function Index() {
         </summary>
         <Textarea
           value={jobDescription}
-          onChange={(e) => {
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
             setJobDescription(e.target.value);
             if (e.target.value && jobTitle) setJobTitle("");
           }}
