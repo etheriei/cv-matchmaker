@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
   Upload, FileText, Sparkles, Copy, Check, AlertCircle,
-  Download, ShieldCheck, ListChecks, Target, Quote,
+  Download, ShieldCheck, ListChecks, Target, Quote, Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
@@ -73,7 +73,10 @@ const SECTION_LABELS: Record<keyof SectionCheck, string> = {
 function Index() {
   const [file, setFile] = useState<File | null>(null);
   const [cvText, setCvText] = useState("");
+  const [jobUrl, setJobUrl] = useState("");
   const [jobDescription, setJobDescription] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [scraping, setScraping] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [tailoredCv, setTailoredCv] = useState("");
@@ -107,14 +110,52 @@ function Index() {
     }
   };
 
+  const fetchJobFromUrl = async (): Promise<string | null> => {
+    const url = jobUrl.trim();
+    if (!url) {
+      toast.error("Please paste a job link first");
+      return null;
+    }
+    try {
+      new URL(url);
+    } catch {
+      toast.error("That doesn't look like a valid URL");
+      return null;
+    }
+    setScraping(true);
+    try {
+      const res = await fetch("/api/scrape-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = (await res.json()) as { text?: string; title?: string; error?: string };
+      if (!res.ok || !data.text) {
+        throw new Error(data.error || "Failed to read job page");
+      }
+      setJobDescription(data.text);
+      setJobTitle(data.title || "");
+      toast.success(data.title ? `Loaded: ${data.title}` : "Job description loaded");
+      return data.text;
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Failed to read job page");
+      return null;
+    } finally {
+      setScraping(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!cvText.trim()) {
       toast.error("Please upload your CV first");
       return;
     }
-    if (!jobDescription.trim() || jobDescription.trim().length < 30) {
-      toast.error("Please paste a job description (at least a few sentences)");
-      return;
+    let jd = jobDescription;
+    if (!jd.trim() || jd.trim().length < 30) {
+      const fetched = await fetchJobFromUrl();
+      if (!fetched) return;
+      jd = fetched;
     }
 
     setLoading(true);
@@ -127,7 +168,7 @@ function Index() {
 
     try {
       const { data, error } = await supabase.functions.invoke("tailor-cv", {
-        body: { cvText, jobDescription },
+        body: { cvText, jobDescription: jd },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -233,25 +274,53 @@ function Index() {
 
             <div>
               <label htmlFor="jd" className="text-sm font-medium text-foreground mb-2 block">
-                Job description
+        Job link
               </label>
-              <Textarea
-                id="jd"
-                value={jobDescription}
-                onChange={(e) => setJobDescription(e.target.value)}
-                placeholder="Paste the full job description here…"
-                className="min-h-[180px] resize-y"
-              />
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            id="jd"
+            type="url"
+            value={jobUrl}
+            onChange={(e) => {
+              setJobUrl(e.target.value);
+              if (jobDescription) {
+                setJobDescription("");
+                setJobTitle("");
+              }
+            }}
+            placeholder="https://company.com/careers/role"
+            className="pl-9"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={fetchJobFromUrl}
+          disabled={scraping || !jobUrl.trim()}
+        >
+          {scraping ? "Fetching…" : jobDescription ? "Re-fetch" : "Fetch"}
+        </Button>
+      </div>
+      {jobDescription && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          ✓ Loaded {jobTitle ? `“${jobTitle}”` : "job description"} ({jobDescription.length.toLocaleString()} chars)
+        </p>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">
+        Paste a public job posting URL (LinkedIn, company careers page, etc).
+      </p>
             </div>
 
             <Button
               onClick={handleGenerate}
-              disabled={loading || parsing || !cvText || !jobDescription}
+      disabled={loading || parsing || scraping || !cvText || !jobUrl.trim()}
               size="lg"
               className="w-full"
             >
               <Sparkles className="h-4 w-4" />
-              {loading ? "Forging your CV…" : "Forge Tailored CV"}
+      {loading ? "Forging your CV…" : scraping ? "Reading job…" : "Forge Tailored CV"}
             </Button>
           </div>
         </Card>
