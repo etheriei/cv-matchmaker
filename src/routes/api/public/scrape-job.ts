@@ -45,9 +45,24 @@ export const Route = createFileRoute("/api/public/scrape-job")({
             | { success?: boolean; data?: { markdown?: string; metadata?: { title?: string } }; markdown?: string; metadata?: { title?: string }; error?: string }
             | null;
 
+          // LinkedIn (and a few other sites) require login and block scrapers.
+          const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
+          const blockedHosts = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com"];
+          const isBlockedHost = blockedHosts.some((h) => host === h || host.endsWith(`.${h}`));
+
           if (!res.ok || !data) {
+            console.error("Firecrawl error", res.status, JSON.stringify(data));
+            if (isBlockedHost) {
+              return Response.json(
+                {
+                  error:
+                    `${host} requires login and blocks automated scraping. Open the job, copy the description, and paste the text into the field instead, or use the company's own careers page link.`,
+                },
+                { status: 422 },
+              );
+            }
             return Response.json(
-              { error: "Could not fetch that job page. Try pasting the description manually." },
+              { error: data?.error || "Could not fetch that job page. Try pasting the description manually." },
               { status: 502 },
             );
           }
@@ -56,6 +71,15 @@ export const Route = createFileRoute("/api/public/scrape-job")({
           const title = data.metadata?.title ?? data.data?.metadata?.title ?? "";
 
           if (!markdown || markdown.trim().length < 50) {
+            if (isBlockedHost) {
+              return Response.json(
+                {
+                  error:
+                    `${host} requires login and blocks automated scraping. Paste the job description text directly, or use the company's careers page URL.`,
+                },
+                { status: 422 },
+              );
+            }
             return Response.json(
               { error: "Couldn't extract a job description from that URL." },
               { status: 422 },
