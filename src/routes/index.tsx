@@ -215,11 +215,26 @@ function Index() {
       <Toaster richColors position="top-center" />
 
       <header className="border-b border-border/60 bg-background/80 backdrop-blur sticky top-0 z-10">
-        <div className="mx-auto max-w-5xl px-6 py-4 flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-4 w-4" />
+        <div className="mx-auto max-w-5xl px-6 py-4 flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted ring-1 ring-border text-muted-foreground">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="square"
+              strokeLinejoin="miter"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path d="M4 7h10l4 4h2" />
+              <path d="M8 7v6" />
+              <path d="M4 17h12" />
+            </svg>
           </div>
-          <span className="font-semibold tracking-tight">CVFoundry</span>
+          <span className="font-semibold tracking-tight text-foreground/90">
+            CV<span className="text-muted-foreground">Foundry</span>
+          </span>
         </div>
       </header>
 
