@@ -10,43 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiScrapeJobRouteImport } from './routes/api/scrape-job'
+import { Route as ApiPublicScrapeJobRouteImport } from './routes/api/public/scrape-job'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiScrapeJobRoute = ApiScrapeJobRouteImport.update({
-  id: '/api/scrape-job',
-  path: '/api/scrape-job',
+const ApiPublicScrapeJobRoute = ApiPublicScrapeJobRouteImport.update({
+  id: '/api/public/scrape-job',
+  path: '/api/public/scrape-job',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api/scrape-job': typeof ApiScrapeJobRoute
+  '/api/public/scrape-job': typeof ApiPublicScrapeJobRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api/scrape-job': typeof ApiScrapeJobRoute
+  '/api/public/scrape-job': typeof ApiPublicScrapeJobRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api/scrape-job': typeof ApiScrapeJobRoute
+  '/api/public/scrape-job': typeof ApiPublicScrapeJobRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/scrape-job'
+  fullPaths: '/' | '/api/public/scrape-job'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/scrape-job'
-  id: '__root__' | '/' | '/api/scrape-job'
+  to: '/' | '/api/public/scrape-job'
+  id: '__root__' | '/' | '/api/public/scrape-job'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiScrapeJobRoute: typeof ApiScrapeJobRoute
+  ApiPublicScrapeJobRoute: typeof ApiPublicScrapeJobRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,11 +58,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/scrape-job': {
-      id: '/api/scrape-job'
-      path: '/api/scrape-job'
-      fullPath: '/api/scrape-job'
-      preLoaderRoute: typeof ApiScrapeJobRouteImport
+    '/api/public/scrape-job': {
+      id: '/api/public/scrape-job'
+      path: '/api/public/scrape-job'
+      fullPath: '/api/public/scrape-job'
+      preLoaderRoute: typeof ApiPublicScrapeJobRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -70,7 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiScrapeJobRoute: ApiScrapeJobRoute,
+  ApiPublicScrapeJobRoute: ApiPublicScrapeJobRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

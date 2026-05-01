@@ -124,7 +124,7 @@ function Index() {
     }
     setScraping(true);
     try {
-      const res = await fetch("/api/scrape-job", {
+      const res = await fetch("/api/public/scrape-job", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),

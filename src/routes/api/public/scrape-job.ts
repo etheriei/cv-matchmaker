@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/firecrawl";
 
-export const Route = createFileRoute("/api/scrape-job")({
+export const Route = createFileRoute("/api/public/scrape-job")({
   server: {
     handlers: {
       POST: async ({ request }) => {
