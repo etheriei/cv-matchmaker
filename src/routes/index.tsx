@@ -324,13 +324,28 @@ function Index() {
         </p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
-        Paste a public job posting URL (LinkedIn, company careers page, etc).
+        Works best with public company careers pages. LinkedIn, Indeed and Glassdoor block scrapers, paste the description below instead.
       </p>
+
+      <details className="mt-3 group">
+        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
+          Or paste the job description manually
+        </summary>
+        <Textarea
+          value={jobDescription}
+          onChange={(e) => {
+            setJobDescription(e.target.value);
+            if (e.target.value && jobTitle) setJobTitle("");
+          }}
+          placeholder="Paste the full job description here…"
+          className="mt-2 min-h-[160px] text-sm"
+        />
+      </details>
             </div>
 
             <Button
               onClick={handleGenerate}
-      disabled={loading || parsing || scraping || !cvText || !jobUrl.trim()}
+      disabled={loading || parsing || scraping || !cvText || (!jobUrl.trim() && jobDescription.trim().length < 30)}
               size="lg"
               className="w-full"
             >
