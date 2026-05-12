@@ -1,19 +1,24 @@
 import { jsPDF } from "jspdf";
 
+export type CvPdfTemplate = "ats" | "modern";
+
 // Generates a clean, ATS-friendly single-column PDF using standard fonts.
-export function generateCvPdf(cvText: string, fileName = "tailored-cv.pdf") {
+export function generateCvPdf(
+  cvText: string,
+  fileName = "tailored-cv.pdf",
+  template: CvPdfTemplate = "ats",
+) {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 56;
-  const marginTop = 56;
+  let marginTop = 56;
   const marginBottom = 56;
   const maxWidth = pageWidth - marginX * 2;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
 
-  let y = marginTop;
   const lineHeight = 14;
 
   // Strip residual markdown defensively
@@ -24,6 +29,30 @@ export function generateCvPdf(cvText: string, fileName = "tailored-cv.pdf") {
     .replace(/^#+\s*/gm, "");
 
   const lines = clean.split("\n");
+
+  // Modern template: top accent band with the candidate's name (first non-empty,
+  // non-heading line) rendered large.
+  if (template === "modern") {
+    const firstLine = lines.find((l) => l.trim().length > 0)?.trim() ?? "";
+    const bandHeight = 64;
+    doc.setFillColor(31, 41, 55); // slate-800
+    doc.rect(0, 0, pageWidth, bandHeight, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text(firstLine || "Curriculum Vitae", marginX, 40);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    marginTop = bandHeight + 24;
+    // Skip the consumed name line
+    if (firstLine) {
+      const idx = lines.findIndex((l) => l.trim() === firstLine);
+      if (idx !== -1) lines.splice(idx, 1);
+    }
+  }
+
+  let y = marginTop;
 
   const isHeading = (line: string) => {
     const t = line.trim();
@@ -77,16 +106,31 @@ export function generateCvPdf(cvText: string, fileName = "tailored-cv.pdf") {
     if (isHeading(line)) {
       ensureSpace(lineHeight * 1.8);
       y += lineHeight * 0.4;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(line.trim(), marginX, y);
-      y += lineHeight;
-      // underline
-      doc.setDrawColor(180);
-      doc.line(marginX, y - 8, pageWidth - marginX, y - 8);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      y += 4;
+      if (template === "modern") {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(31, 41, 55);
+        doc.text(line.trim().toUpperCase(), marginX, y);
+        y += lineHeight;
+        doc.setDrawColor(31, 41, 55);
+        doc.setLineWidth(1.2);
+        doc.line(marginX, y - 8, marginX + 36, y - 8);
+        doc.setLineWidth(0.2);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        y += 6;
+      } else {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text(line.trim(), marginX, y);
+        y += lineHeight;
+        doc.setDrawColor(180);
+        doc.line(marginX, y - 8, pageWidth - marginX, y - 8);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        y += 4;
+      }
       continue;
     }
 
