@@ -369,11 +369,21 @@ function Index() {
           ✓ Loaded {jobTitle ? `“${jobTitle}”` : "job description"} ({jobDescription.length.toLocaleString()} chars)
         </p>
       )}
-      <p className="mt-2 text-xs text-muted-foreground">
-        Works best with public company careers pages. LinkedIn, Indeed and Glassdoor block scrapers, paste the description below instead.
-      </p>
+      {blockedHost ? (
+        <p className="mt-2 text-xs text-destructive">
+          {blockedHost} blocks automated scraping. Paste the job description below instead.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Works best with public company careers pages. LinkedIn, Indeed and Glassdoor block scrapers, paste the description below instead.
+        </p>
+      )}
 
-      <details className="mt-3 group">
+      <details
+        className="mt-3 group"
+        open={pasteOpen || !!blockedHost}
+        onToggle={(e) => setPasteOpen((e.target as HTMLDetailsElement).open)}
+      >
         <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
           Or paste the job description manually
         </summary>
