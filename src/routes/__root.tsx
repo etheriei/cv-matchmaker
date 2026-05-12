@@ -29,14 +29,27 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "CVFoundry — Forge an ATS-ready CV for any job" },
+      {
+        name: "description",
+        content:
+          "Upload your CV, paste a job link, and get an ATS-optimised, recruiter-ready CV with match score, keyword gap analysis, cover letter, PDF and DOCX exports.",
+      },
+      { name: "author", content: "CVFoundry" },
+      { property: "og:title", content: "CVFoundry — AI CV optimisation" },
+      {
+        property: "og:description",
+        content:
+          "Forge an ATS-ready CV in seconds. Match score, keyword gap, tailored cover letter, PDF + DOCX.",
+      },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "CVFoundry — AI CV optimisation" },
+      {
+        name: "twitter:description",
+        content:
+          "Forge an ATS-ready CV in seconds. Match score, keyword gap, tailored cover letter, PDF + DOCX.",
+      },
     ],
     links: [
       {

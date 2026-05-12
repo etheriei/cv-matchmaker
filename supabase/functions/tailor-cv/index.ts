@@ -131,8 +131,12 @@ Return a tailored CV, key improvements, a full ATS report, a fit score with reas
                   type: "string",
                   description: "A single sentence positioning statement, e.g. 'Positioning you as a mid-level Product Designer focused on UX systems and UI execution.' Plain text, no markdown, no dashes.",
                 },
+                coverLetter: {
+                  type: "string",
+                  description: "A tailored cover letter (250-350 words) addressed to the hiring team. Plain text only, no markdown, no em/en dashes. Use 3-4 short paragraphs separated by blank lines. Reference specific job requirements and matching candidate strengths. Open with the role and a strong hook, close with a clear call to action. Do NOT fabricate experience.",
+                },
               },
-              required: ["tailoredCv", "improvements", "ats", "fit", "keywordGap", "positioningLine"],
+              required: ["tailoredCv", "improvements", "ats", "fit", "keywordGap", "positioningLine", "coverLetter"],
               additionalProperties: false,
             },
           },
@@ -194,6 +198,9 @@ Return a tailored CV, key improvements, a full ATS report, a fit score with reas
     }
     if (typeof args.positioningLine === "string") {
       args.positioningLine = stripMd(args.positioningLine);
+    }
+    if (typeof args.coverLetter === "string") {
+      args.coverLetter = stripMd(args.coverLetter);
     }
 
     return new Response(JSON.stringify(args), {

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
   Upload, FileText, Sparkles, Copy, Check, AlertCircle,
-  Download, ShieldCheck, ListChecks, Target, Quote, Link2,
+  Download, ShieldCheck, ListChecks, Target, Quote, Link2, Mail, FileDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { extractTextFromFile } from "@/lib/extract-text";
-import { generateCvPdf } from "@/lib/cv-pdf";
+import { generateCvPdf, type CvPdfTemplate } from "@/lib/cv-pdf";
+import { generateCvDocx } from "@/lib/cv-docx";
 import { supabase } from "@/integrations/supabase/client";
 
 type SectionCheck = {
@@ -42,6 +43,17 @@ type KeywordGap = {
   topKeywords: string[];
   present: string[];
   missing: string[];
+};
+
+const BLOCKED_HOSTS = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com"];
+const isBlockedJobHost = (raw: string): string | null => {
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, "");
+    const match = BLOCKED_HOSTS.find((h) => host === h || host.endsWith(`.${h}`));
+    return match ?? null;
+  } catch {
+    return null;
+  }
 };
 
 export const Route = createFileRoute("/")({
@@ -86,8 +98,14 @@ function Index() {
   const [fit, setFit] = useState<FitReport | null>(null);
   const [keywordGap, setKeywordGap] = useState<KeywordGap | null>(null);
   const [positioningLine, setPositioningLine] = useState<string>("");
+  const [coverLetter, setCoverLetter] = useState<string>("");
+  const [coverCopied, setCoverCopied] = useState(false);
+  const [pdfTemplate, setPdfTemplate] = useState<CvPdfTemplate>("ats");
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const blockedHost = isBlockedJobHost(jobUrl);
 
   const handleFile = async (f: File) => {
     setFile(f);
@@ -121,6 +139,12 @@ function Index() {
       new URL(url);
     } catch {
       toast.error("That doesn't look like a valid URL");
+      return null;
+    }
+    const blocked = isBlockedJobHost(url);
+    if (blocked) {
+      setPasteOpen(true);
+      toast.error(`${blocked} blocks scrapers — paste the description below instead.`);
       return null;
     }
     setScraping(true);
@@ -180,6 +204,7 @@ function Index() {
       setFit(data.fit ?? null);
       setKeywordGap(data.keywordGap ?? null);
       setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
+      setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
 
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
@@ -201,11 +226,31 @@ function Index() {
 
   const handleDownloadPdf = () => {
     try {
-      generateCvPdf(tailoredCv, "CVFoundry-tailored-cv.pdf");
+      generateCvPdf(
+        tailoredCv,
+        `CVFoundry-tailored-cv-${pdfTemplate}.pdf`,
+        pdfTemplate,
+      );
     } catch (e) {
       console.error(e);
       toast.error("Could not generate PDF");
     }
+  };
+
+  const handleDownloadDocx = async () => {
+    try {
+      await generateCvDocx(tailoredCv, "CVFoundry-tailored-cv.docx");
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not generate DOCX");
+    }
+  };
+
+  const handleCopyCover = async () => {
+    await navigator.clipboard.writeText(coverLetter);
+    setCoverCopied(true);
+    toast.success("Cover letter copied");
+    setTimeout(() => setCoverCopied(false), 2000);
   };
 
   const scoreColor = (score: number) =>
@@ -324,11 +369,21 @@ function Index() {
           ✓ Loaded {jobTitle ? `“${jobTitle}”` : "job description"} ({jobDescription.length.toLocaleString()} chars)
         </p>
       )}
-      <p className="mt-2 text-xs text-muted-foreground">
-        Works best with public company careers pages. LinkedIn, Indeed and Glassdoor block scrapers, paste the description below instead.
-      </p>
+      {blockedHost ? (
+        <p className="mt-2 text-xs text-destructive">
+          {blockedHost} blocks automated scraping. Paste the job description below instead.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Works best with public company careers pages. LinkedIn, Indeed and Glassdoor block scrapers, paste the description below instead.
+        </p>
+      )}
 
-      <details className="mt-3 group">
+      <details
+        className="mt-3 group"
+        open={pasteOpen || !!blockedHost}
+        onToggle={(e) => setPasteOpen((e.target as HTMLDetailsElement).open)}
+      >
         <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
           Or paste the job description manually
         </summary>
@@ -566,13 +621,32 @@ function Index() {
             <Card className="p-6 md:p-8 shadow-sm">
               <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <h2 className="text-lg font-semibold text-foreground">Tailored CV</h2>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap items-center">
+                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPdfTemplate("ats")}
+                      className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                    >
+                      ATS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPdfTemplate("modern")}
+                      className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                    >
+                      Modern
+                    </button>
+                  </div>
                   <Button variant="outline" size="sm" onClick={handleCopy}>
                     {copied ? (
                       <><Check className="h-4 w-4" /> Copied</>
                     ) : (
                       <><Copy className="h-4 w-4" /> Copy</>
                     )}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleDownloadDocx}>
+                    <FileDown className="h-4 w-4" /> DOCX
                   </Button>
                   <Button size="sm" onClick={handleDownloadPdf}>
                     <Download className="h-4 w-4" /> Download PDF
@@ -583,6 +657,27 @@ function Index() {
                 {tailoredCv}
               </pre>
             </Card>
+
+            {coverLetter && (
+              <Card className="p-6 md:p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Cover Letter
+                  </h2>
+                  <Button variant="outline" size="sm" onClick={handleCopyCover}>
+                    {coverCopied ? (
+                      <><Check className="h-4 w-4" /> Copied</>
+                    ) : (
+                      <><Copy className="h-4 w-4" /> Copy</>
+                    )}
+                  </Button>
+                </div>
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
+                  {coverLetter}
+                </pre>
+              </Card>
+            )}
 
             {improvements.length > 0 && (
               <Card className="p-6 md:p-8 shadow-sm bg-muted/40">
