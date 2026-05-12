@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
   Upload, FileText, Sparkles, Copy, Check, AlertCircle,
-  Download, ShieldCheck, ListChecks, Target, Quote, Link2,
+  Download, ShieldCheck, ListChecks, Target, Quote, Link2, Mail, FileDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { extractTextFromFile } from "@/lib/extract-text";
-import { generateCvPdf } from "@/lib/cv-pdf";
+import { generateCvPdf, type CvPdfTemplate } from "@/lib/cv-pdf";
+import { generateCvDocx } from "@/lib/cv-docx";
 import { supabase } from "@/integrations/supabase/client";
 
 type SectionCheck = {
@@ -42,6 +43,17 @@ type KeywordGap = {
   topKeywords: string[];
   present: string[];
   missing: string[];
+};
+
+const BLOCKED_HOSTS = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com"];
+const isBlockedJobHost = (raw: string): string | null => {
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, "");
+    const match = BLOCKED_HOSTS.find((h) => host === h || host.endsWith(`.${h}`));
+    return match ?? null;
+  } catch {
+    return null;
+  }
 };
 
 export const Route = createFileRoute("/")({
@@ -86,8 +98,14 @@ function Index() {
   const [fit, setFit] = useState<FitReport | null>(null);
   const [keywordGap, setKeywordGap] = useState<KeywordGap | null>(null);
   const [positioningLine, setPositioningLine] = useState<string>("");
+  const [coverLetter, setCoverLetter] = useState<string>("");
+  const [coverCopied, setCoverCopied] = useState(false);
+  const [pdfTemplate, setPdfTemplate] = useState<CvPdfTemplate>("ats");
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const blockedHost = isBlockedJobHost(jobUrl);
 
   const handleFile = async (f: File) => {
     setFile(f);
@@ -121,6 +139,12 @@ function Index() {
       new URL(url);
     } catch {
       toast.error("That doesn't look like a valid URL");
+      return null;
+    }
+    const blocked = isBlockedJobHost(url);
+    if (blocked) {
+      setPasteOpen(true);
+      toast.error(`${blocked} blocks scrapers — paste the description below instead.`);
       return null;
     }
     setScraping(true);
@@ -180,6 +204,7 @@ function Index() {
       setFit(data.fit ?? null);
       setKeywordGap(data.keywordGap ?? null);
       setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
+      setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
 
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
@@ -201,11 +226,31 @@ function Index() {
 
   const handleDownloadPdf = () => {
     try {
-      generateCvPdf(tailoredCv, "CVFoundry-tailored-cv.pdf");
+      generateCvPdf(
+        tailoredCv,
+        `CVFoundry-tailored-cv-${pdfTemplate}.pdf`,
+        pdfTemplate,
+      );
     } catch (e) {
       console.error(e);
       toast.error("Could not generate PDF");
     }
+  };
+
+  const handleDownloadDocx = async () => {
+    try {
+      await generateCvDocx(tailoredCv, "CVFoundry-tailored-cv.docx");
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not generate DOCX");
+    }
+  };
+
+  const handleCopyCover = async () => {
+    await navigator.clipboard.writeText(coverLetter);
+    setCoverCopied(true);
+    toast.success("Cover letter copied");
+    setTimeout(() => setCoverCopied(false), 2000);
   };
 
   const scoreColor = (score: number) =>
