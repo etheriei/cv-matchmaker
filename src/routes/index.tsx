@@ -621,13 +621,32 @@ function Index() {
             <Card className="p-6 md:p-8 shadow-sm">
               <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <h2 className="text-lg font-semibold text-foreground">Tailored CV</h2>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap items-center">
+                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPdfTemplate("ats")}
+                      className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                    >
+                      ATS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPdfTemplate("modern")}
+                      className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                    >
+                      Modern
+                    </button>
+                  </div>
                   <Button variant="outline" size="sm" onClick={handleCopy}>
                     {copied ? (
                       <><Check className="h-4 w-4" /> Copied</>
                     ) : (
                       <><Copy className="h-4 w-4" /> Copy</>
                     )}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleDownloadDocx}>
+                    <FileDown className="h-4 w-4" /> DOCX
                   </Button>
                   <Button size="sm" onClick={handleDownloadPdf}>
                     <Download className="h-4 w-4" /> Download PDF
@@ -638,6 +657,27 @@ function Index() {
                 {tailoredCv}
               </pre>
             </Card>
+
+            {coverLetter && (
+              <Card className="p-6 md:p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Cover Letter
+                  </h2>
+                  <Button variant="outline" size="sm" onClick={handleCopyCover}>
+                    {coverCopied ? (
+                      <><Check className="h-4 w-4" /> Copied</>
+                    ) : (
+                      <><Copy className="h-4 w-4" /> Copy</>
+                    )}
+                  </Button>
+                </div>
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
+                  {coverLetter}
+                </pre>
+              </Card>
+            )}
 
             {improvements.length > 0 && (
               <Card className="p-6 md:p-8 shadow-sm bg-muted/40">
