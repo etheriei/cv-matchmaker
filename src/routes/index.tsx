@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { extractTextFromFile } from "@/lib/extract-text";
@@ -54,6 +55,47 @@ const isBlockedJobHost = (raw: string): string | null => {
   } catch {
     return null;
   }
+};
+
+type CvTone = "concise" | "standard" | "detailed";
+type Locale = "uk" | "us";
+type CoverTone = "formal" | "warm" | "direct";
+type CoverLength = 200 | 300 | 400;
+type CvView = "tailored" | "original" | "compare";
+
+const slug = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+
+const extractName = (cv: string): string => {
+  const lines = cv.split("\n").map((l) => l.trim()).filter(Boolean);
+  for (const l of lines.slice(0, 5)) {
+    // First plausible name line: 2-5 words, mostly letters
+    if (/^[A-Za-zÀ-ÿ.'\- ]{4,60}$/.test(l) && l.split(/\s+/).length >= 2 && l.split(/\s+/).length <= 5) {
+      return l;
+    }
+  }
+  return "";
+};
+
+const extractCompany = (title: string, jd: string): string => {
+  // Try patterns like "Role at Company" / "Role @ Company" / "Role | Company"
+  const src = title || jd.split("\n").find((l) => l.trim().length > 0) || "";
+  const m =
+    src.match(/\b(?:at|@)\s+([A-Z][A-Za-z0-9&.\- ]{1,40})/) ||
+    src.match(/[|–\-]\s*([A-Z][A-Za-z0-9&.\- ]{1,40})\s*$/);
+  return m ? m[1].trim() : "";
+};
+
+const buildFileName = (cv: string, title: string, jd: string, ext: string, suffix = "") => {
+  const name = slug(extractName(cv)) || "tailored-cv";
+  const company = slug(extractCompany(title, jd));
+  const parts = ["CVFoundry", name, company, suffix].filter(Boolean);
+  return `${parts.join("-")}.${ext}`;
 };
 
 export const Route = createFileRoute("/")({
@@ -103,6 +145,11 @@ function Index() {
   const [pdfTemplate, setPdfTemplate] = useState<CvPdfTemplate>("ats");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [cvTone, setCvTone] = useState<CvTone>("standard");
+  const [locale, setLocale] = useState<Locale>("uk");
+  const [coverTone, setCoverTone] = useState<CoverTone>("warm");
+  const [coverLength, setCoverLength] = useState<CoverLength>(300);
+  const [cvView, setCvView] = useState<CvView>("tailored");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const blockedHost = isBlockedJobHost(jobUrl);
@@ -193,7 +240,14 @@ function Index() {
 
     try {
       const { data, error } = await supabase.functions.invoke("tailor-cv", {
-        body: { cvText, jobDescription: jd },
+        body: {
+          cvText,
+          jobDescription: jd,
+          tone: cvTone,
+          locale,
+          coverTone,
+          coverLength,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -228,7 +282,7 @@ function Index() {
     try {
       generateCvPdf(
         tailoredCv,
-        `CVFoundry-tailored-cv-${pdfTemplate}.pdf`,
+        buildFileName(tailoredCv || cvText, jobTitle, jobDescription, "pdf", pdfTemplate),
         pdfTemplate,
       );
     } catch (e) {
@@ -239,7 +293,10 @@ function Index() {
 
   const handleDownloadDocx = async () => {
     try {
-      await generateCvDocx(tailoredCv, "CVFoundry-tailored-cv.docx");
+      await generateCvDocx(
+        tailoredCv,
+        buildFileName(tailoredCv || cvText, jobTitle, jobDescription, "docx"),
+      );
     } catch (e) {
       console.error(e);
       toast.error("Could not generate DOCX");
@@ -408,13 +465,98 @@ function Index() {
               <Sparkles className="h-4 w-4" />
       {loading ? "Forging your CV…" : scraping ? "Reading job…" : "Forge Tailored CV"}
             </Button>
+
+            <div className="grid gap-4 sm:grid-cols-2 pt-2 border-t border-border/60">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">CV tone</label>
+                <div className="inline-flex w-full rounded-md border border-border overflow-hidden text-xs">
+                  {(["concise", "standard", "detailed"] as CvTone[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setCvTone(t)}
+                      className={`flex-1 px-2 py-1.5 capitalize ${cvTone === t ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"} ${t !== "concise" ? "border-l border-border" : ""}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Spelling</label>
+                <div className="inline-flex w-full rounded-md border border-border overflow-hidden text-xs">
+                  {(["uk", "us"] as Locale[]).map((l) => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => setLocale(l)}
+                      className={`flex-1 px-2 py-1.5 uppercase ${locale === l ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"} ${l !== "uk" ? "border-l border-border" : ""}`}
+                    >
+                      {l === "uk" ? "UK English" : "US English"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Cover letter tone</label>
+                <div className="inline-flex w-full rounded-md border border-border overflow-hidden text-xs">
+                  {(["formal", "warm", "direct"] as CoverTone[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setCoverTone(t)}
+                      className={`flex-1 px-2 py-1.5 capitalize ${coverTone === t ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"} ${t !== "formal" ? "border-l border-border" : ""}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Cover letter length</label>
+                <div className="inline-flex w-full rounded-md border border-border overflow-hidden text-xs">
+                  {([200, 300, 400] as CoverLength[]).map((l) => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => setCoverLength(l)}
+                      className={`flex-1 px-2 py-1.5 ${coverLength === l ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"} ${l !== 200 ? "border-l border-border" : ""}`}
+                    >
+                      ~{l}w
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
 
         {loading && (
-          <div className="mt-8 text-center text-muted-foreground text-sm">
-            Forging your CV and running ATS analysis…
-          </div>
+          <section className="mt-10 space-y-6" aria-label="Loading results">
+            <Card className="p-6 md:p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-8 w-16" />
+              </div>
+              <Skeleton className="h-2 w-full mb-6" />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            </Card>
+            <Card className="p-6 md:p-8 shadow-sm space-y-3">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-11/12" />
+              <Skeleton className="h-4 w-10/12" />
+              <Skeleton className="h-4 w-9/12" />
+              <Skeleton className="h-4 w-11/12" />
+            </Card>
+            <p className="text-center text-muted-foreground text-sm">
+              Forging your CV and running ATS analysis…
+            </p>
+          </section>
         )}
 
         {tailoredCv && !loading && (
@@ -623,6 +765,18 @@ function Index() {
                 <h2 className="text-lg font-semibold text-foreground">Tailored CV</h2>
                 <div className="flex gap-2 flex-wrap items-center">
                   <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+                    {(["tailored", "original", "compare"] as CvView[]).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setCvView(v)}
+                        className={`px-2.5 py-1.5 capitalize ${cvView === v ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"} ${v !== "tailored" ? "border-l border-border" : ""}`}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
                     <button
                       type="button"
                       onClick={() => setPdfTemplate("ats")}
@@ -653,9 +807,32 @@ function Index() {
                   </Button>
                 </div>
               </div>
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
-                {tailoredCv}
-              </pre>
+              {cvView === "tailored" && (
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
+                  {tailoredCv}
+                </pre>
+              )}
+              {cvView === "original" && (
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-muted-foreground">
+                  {cvText}
+                </pre>
+              )}
+              {cvView === "compare" && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Original</div>
+                    <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted-foreground max-h-[600px] overflow-auto rounded border border-border p-3 bg-muted/30">
+                      {cvText}
+                    </pre>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Tailored</div>
+                    <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-foreground max-h-[600px] overflow-auto rounded border border-border p-3">
+                      {tailoredCv}
+                    </pre>
+                  </div>
+                </div>
+              )}
             </Card>
 
             {coverLetter && (
