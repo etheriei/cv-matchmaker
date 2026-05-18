@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { cvText, jobDescription } = await req.json();
+    const { cvText, jobDescription, tone, locale, coverTone, coverLength } = await req.json();
     const MAX_CV = 15_000;
     const MAX_JD = 10_000;
     if (typeof cvText !== "string" || cvText.trim().length === 0) {
@@ -37,10 +37,36 @@ Deno.serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    const cvTone = (["concise", "standard", "detailed"].includes(tone) ? tone : "standard") as
+      "concise" | "standard" | "detailed";
+    const cvLocale = (["uk", "us"].includes(locale) ? locale : "uk") as "uk" | "us";
+    const cTone = (["formal", "warm", "direct"].includes(coverTone) ? coverTone : "warm") as
+      "formal" | "warm" | "direct";
+    const cLen = ([200, 300, 400].includes(Number(coverLength)) ? Number(coverLength) : 300);
+
+    const toneGuide = {
+      concise: "Be highly concise: short bullets, no filler, prefer 1 line per bullet.",
+      standard: "Use a balanced length: clear bullets, typically 1-2 lines each.",
+      detailed: "Be thorough: longer bullets with quantified outcomes and context where useful.",
+    }[cvTone];
+    const localeGuide =
+      cvLocale === "uk"
+        ? "Use British English spelling (organisation, optimisation, programme, behaviour, colour)."
+        : "Use American English spelling (organization, optimization, program, behavior, color).";
+    const coverToneGuide = {
+      formal: "Professional and respectful, third-person-friendly phrasing.",
+      warm: "Warm and human, enthusiastic but professional.",
+      direct: "Direct and confident, lead with impact, minimal pleasantries.",
+    }[cTone];
+
     const systemPrompt = `You are a senior CV optimisation and ATS (Applicant Tracking System) expert.
 Rewrite the CV to better match the job description WITHOUT fabricating experience.
 Use plain text only. NEVER use markdown formatting: no asterisks (*), no underscores (_), no backticks, no hashes (#), no bold, no italics. Use plain UPPERCASE for section headings and hyphens (-) for bullets.
-STRICT PUNCTUATION RULE: NEVER use em dashes (—) or en dashes (–) anywhere in any output field. Do not use them in the tailored CV, improvements, or ATS report. Replace any dash-style pause with a comma, a period, a colon, or simply rewrite the sentence. Only the regular hyphen-minus (-) is allowed, and only for bullet points or compound words.`;
+STRICT PUNCTUATION RULE: NEVER use em dashes (—) or en dashes (–) anywhere in any output field. Do not use them in the tailored CV, improvements, or ATS report. Replace any dash-style pause with a comma, a period, a colon, or simply rewrite the sentence. Only the regular hyphen-minus (-) is allowed, and only for bullet points or compound words.
+TONE: ${toneGuide}
+LOCALE: ${localeGuide}
+COVER LETTER TONE: ${coverToneGuide}
+COVER LETTER LENGTH: target approximately ${cLen} words (acceptable range ${cLen - 40}-${cLen + 40}).`;
 
     const userPrompt = `CV:
 ${cvText}
@@ -133,7 +159,7 @@ Return a tailored CV, key improvements, a full ATS report, a fit score with reas
                 },
                 coverLetter: {
                   type: "string",
-                  description: "A tailored cover letter (250-350 words) addressed to the hiring team. Plain text only, no markdown, no em/en dashes. Use 3-4 short paragraphs separated by blank lines. Reference specific job requirements and matching candidate strengths. Open with the role and a strong hook, close with a clear call to action. Do NOT fabricate experience.",
+                  description: `A tailored cover letter addressed to the hiring team. Target ~${cLen} words. Plain text only, no markdown, no em/en dashes. Use 3-4 short paragraphs separated by blank lines. Reference specific job requirements and matching candidate strengths. Open with the role and a strong hook, close with a clear call to action. Do NOT fabricate experience.`,
                 },
               },
               required: ["tailoredCv", "improvements", "ats", "fit", "keywordGap", "positioningLine", "coverLetter"],
