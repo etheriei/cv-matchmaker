@@ -441,8 +441,24 @@ function Index() {
         open={pasteOpen || !!blockedHost}
         onToggle={(e) => setPasteOpen((e.target as HTMLDetailsElement).open)}
       >
-        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
-          Or paste the job description manually
+        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none flex items-center justify-between gap-2">
+          <span>Or paste the job description manually</span>
+          {(jobDescription || jobUrl) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                setJobDescription("");
+                setJobTitle("");
+                setJobUrl("");
+                setPasteOpen(false);
+              }}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+            >
+              <X className="h-3 w-3" />
+              Clear
+            </button>
+          )}
         </summary>
         <Textarea
           value={jobDescription}
