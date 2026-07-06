@@ -11,8 +11,8 @@ Deno.serve(async (req) => {
 
   try {
     const { cvText, jobDescription, tone, locale, coverTone, coverLength } = await req.json();
-    const MAX_CV = 15_000;
-    const MAX_JD = 10_000;
+    const MAX_CV = 30_000;
+    const MAX_JD = 30_000;
     if (typeof cvText !== "string" || cvText.trim().length === 0) {
       return new Response(JSON.stringify({ error: "Missing or invalid cvText" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
