@@ -701,18 +701,58 @@ function Index() {
                     <h3 className="text-sm font-medium text-foreground mb-2">
                       Missing ({keywordGap.missing.length})
                     </h3>
+                    {keywordGap.missing.length > 0 && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Click any keyword that genuinely applies to you to include it in a regenerated CV.
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {keywordGap.missing.length === 0 && (
                         <span className="text-xs text-muted-foreground">All top keywords covered</span>
                       )}
-                      {keywordGap.missing.map((k) => (
-                        <span key={k} className="text-xs px-2 py-1 rounded border border-destructive/40 text-foreground inline-flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3 text-destructive" /> {k}
-                        </span>
-                      ))}
+                      {keywordGap.missing.map((k) => {
+                        const active = selectedMissing.has(k);
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => toggleMissingKeyword(k)}
+                            className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1 transition-colors ${
+                              active
+                                ? "bg-foreground text-background border border-foreground"
+                                : "border border-destructive/40 text-foreground hover:bg-muted"
+                            }`}
+                            aria-pressed={active}
+                          >
+                            {active ? <Check className="h-3 w-3" /> : <AlertCircle className="h-3 w-3 text-destructive" />}
+                            {k}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
+                {selectedMissing.size > 0 && (
+                  <div className="mt-5 flex items-center justify-between gap-3 flex-wrap border-t border-border/60 pt-4">
+                    <p className="text-xs text-muted-foreground">
+                      {selectedMissing.size} keyword{selectedMissing.size === 1 ? "" : "s"} selected. Only tick ones that truly apply to you — nothing will be fabricated.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedMissing(new Set())}
+                        disabled={loading}
+                      >
+                        Clear
+                      </Button>
+                      <Button size="sm" onClick={handleRegenerateWithKeywords} disabled={loading}>
+                        <Sparkles className="h-4 w-4" />
+                        {loading ? "Regenerating…" : "Regenerate with selected"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Card>
             )}
 
