@@ -881,21 +881,28 @@ function Index() {
                       </button>
                     ))}
                   </div>
-                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setPdfTemplate("ats")}
-                      className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
-                    >
-                      ATS
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPdfTemplate("modern")}
-                      className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
-                    >
-                      Modern
-                    </button>
+                  <div className="inline-flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground hidden sm:inline">PDF style:</span>
+                    <div className="inline-flex rounded-md border border-border overflow-hidden text-xs" role="group" aria-label="PDF template">
+                      <button
+                        type="button"
+                        onClick={() => setPdfTemplate("ats")}
+                        title="Plain, single-column, maximum ATS compatibility"
+                        aria-pressed={pdfTemplate === "ats"}
+                        className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                      >
+                        ATS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPdfTemplate("modern")}
+                        title="Dark header band with your name, subtle accents"
+                        aria-pressed={pdfTemplate === "modern"}
+                        className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                      >
+                        Modern
+                      </button>
+                    </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={handleCopy}>
                     {copied ? (
