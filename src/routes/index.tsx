@@ -150,6 +150,7 @@ function Index() {
   const [coverTone, setCoverTone] = useState<CoverTone>("warm");
   const [coverLength, setCoverLength] = useState<CoverLength>(300);
   const [cvView, setCvView] = useState<CvView>("tailored");
+  const [selectedMissing, setSelectedMissing] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const blockedHost = isBlockedJobHost(jobUrl);
@@ -237,6 +238,7 @@ function Index() {
     setFit(null);
     setKeywordGap(null);
     setPositioningLine("");
+    setSelectedMissing(new Set());
 
     try {
       const { data, error } = await supabase.functions.invoke("tailor-cv", {
@@ -269,6 +271,53 @@ function Index() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRegenerateWithKeywords = async () => {
+    if (selectedMissing.size === 0) return;
+    const jd = jobDescription;
+    if (!cvText.trim() || !jd.trim()) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tailor-cv", {
+        body: {
+          cvText,
+          jobDescription: jd,
+          tone: cvTone,
+          locale,
+          coverTone,
+          coverLength,
+          mustIncludeKeywords: Array.from(selectedMissing),
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setTailoredCv(data.tailoredCv ?? "");
+      setImprovements(Array.isArray(data.improvements) ? data.improvements : []);
+      setAts(data.ats ?? null);
+      setFit(data.fit ?? null);
+      setKeywordGap(data.keywordGap ?? null);
+      setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
+      setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
+      setSelectedMissing(new Set());
+      toast.success("CV regenerated with your selected keywords");
+      setTimeout(() => {
+        document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Failed to regenerate CV");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMissingKeyword = (k: string) => {
+    setSelectedMissing((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
   };
 
   const handleCopy = async () => {
@@ -652,18 +701,58 @@ function Index() {
                     <h3 className="text-sm font-medium text-foreground mb-2">
                       Missing ({keywordGap.missing.length})
                     </h3>
+                    {keywordGap.missing.length > 0 && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Click any keyword that genuinely applies to you to include it in a regenerated CV.
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {keywordGap.missing.length === 0 && (
                         <span className="text-xs text-muted-foreground">All top keywords covered</span>
                       )}
-                      {keywordGap.missing.map((k) => (
-                        <span key={k} className="text-xs px-2 py-1 rounded border border-destructive/40 text-foreground inline-flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3 text-destructive" /> {k}
-                        </span>
-                      ))}
+                      {keywordGap.missing.map((k) => {
+                        const active = selectedMissing.has(k);
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => toggleMissingKeyword(k)}
+                            className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1 transition-colors ${
+                              active
+                                ? "bg-foreground text-background border border-foreground"
+                                : "border border-destructive/40 text-foreground hover:bg-muted"
+                            }`}
+                            aria-pressed={active}
+                          >
+                            {active ? <Check className="h-3 w-3" /> : <AlertCircle className="h-3 w-3 text-destructive" />}
+                            {k}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
+                {selectedMissing.size > 0 && (
+                  <div className="mt-5 flex items-center justify-between gap-3 flex-wrap border-t border-border/60 pt-4">
+                    <p className="text-xs text-muted-foreground">
+                      {selectedMissing.size} keyword{selectedMissing.size === 1 ? "" : "s"} selected. Only tick ones that truly apply to you — nothing will be fabricated.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedMissing(new Set())}
+                        disabled={loading}
+                      >
+                        Clear
+                      </Button>
+                      <Button size="sm" onClick={handleRegenerateWithKeywords} disabled={loading}>
+                        <Sparkles className="h-4 w-4" />
+                        {loading ? "Regenerating…" : "Regenerate with selected"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Card>
             )}
 
@@ -792,21 +881,28 @@ function Index() {
                       </button>
                     ))}
                   </div>
-                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setPdfTemplate("ats")}
-                      className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
-                    >
-                      ATS
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPdfTemplate("modern")}
-                      className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
-                    >
-                      Modern
-                    </button>
+                  <div className="inline-flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground hidden sm:inline">PDF style:</span>
+                    <div className="inline-flex rounded-md border border-border overflow-hidden text-xs" role="group" aria-label="PDF template">
+                      <button
+                        type="button"
+                        onClick={() => setPdfTemplate("ats")}
+                        title="Plain, single-column, maximum ATS compatibility"
+                        aria-pressed={pdfTemplate === "ats"}
+                        className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                      >
+                        ATS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPdfTemplate("modern")}
+                        title="Dark header band with your name, subtle accents"
+                        aria-pressed={pdfTemplate === "modern"}
+                        className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
+                      >
+                        Modern
+                      </button>
+                    </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={handleCopy}>
                     {copied ? (

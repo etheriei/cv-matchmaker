@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { cvText, jobDescription, tone, locale, coverTone, coverLength } = await req.json();
+    const { cvText, jobDescription, tone, locale, coverTone, coverLength, mustIncludeKeywords } = await req.json();
     const MAX_CV = 30_000;
     const MAX_JD = 30_000;
     if (typeof cvText !== "string" || cvText.trim().length === 0) {
@@ -43,6 +43,12 @@ Deno.serve(async (req) => {
     const cTone = (["formal", "warm", "direct"].includes(coverTone) ? coverTone : "warm") as
       "formal" | "warm" | "direct";
     const cLen = ([200, 300, 400].includes(Number(coverLength)) ? Number(coverLength) : 300);
+    const includeKw: string[] = Array.isArray(mustIncludeKeywords)
+      ? mustIncludeKeywords
+          .filter((k: unknown): k is string => typeof k === "string" && k.trim().length > 0)
+          .map((k: string) => k.trim())
+          .slice(0, 25)
+      : [];
 
     const toneGuide = {
       concise: "Be highly concise: short bullets, no filler, prefer 1 line per bullet.",
@@ -66,7 +72,11 @@ STRICT PUNCTUATION RULE: NEVER use em dashes (—) or en dashes (–) anywhere i
 TONE: ${toneGuide}
 LOCALE: ${localeGuide}
 COVER LETTER TONE: ${coverToneGuide}
-COVER LETTER LENGTH: target approximately ${cLen} words (acceptable range ${cLen - 40}-${cLen + 40}).`;
+COVER LETTER LENGTH: target approximately ${cLen} words (acceptable range ${cLen - 40}-${cLen + 40}).${
+      includeKw.length > 0
+        ? `\nMUST-INCLUDE KEYWORDS: The user has confirmed these skills/keywords genuinely apply to them. Weave EVERY one of the following into the tailored CV naturally (in the summary, skills, or a relevant experience bullet), without fabricating employers, dates, or projects: ${includeKw.join(", ")}.`
+        : ""
+    }`;
 
     const userPrompt = `CV:
 ${cvText}
