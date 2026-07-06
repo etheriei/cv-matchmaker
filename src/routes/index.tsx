@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
-  Upload, FileText, Sparkles, Copy, Check, AlertCircle,
+  Upload, FileText, Sparkles, Copy, Check, AlertCircle, X,
   Download, ShieldCheck, ListChecks, Target, Quote, Link2, Mail, FileDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
