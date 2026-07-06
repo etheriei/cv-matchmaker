@@ -150,6 +150,7 @@ function Index() {
   const [coverTone, setCoverTone] = useState<CoverTone>("warm");
   const [coverLength, setCoverLength] = useState<CoverLength>(300);
   const [cvView, setCvView] = useState<CvView>("tailored");
+  const [selectedMissing, setSelectedMissing] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const blockedHost = isBlockedJobHost(jobUrl);
@@ -237,6 +238,7 @@ function Index() {
     setFit(null);
     setKeywordGap(null);
     setPositioningLine("");
+    setSelectedMissing(new Set());
 
     try {
       const { data, error } = await supabase.functions.invoke("tailor-cv", {
@@ -269,6 +271,53 @@ function Index() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRegenerateWithKeywords = async () => {
+    if (selectedMissing.size === 0) return;
+    const jd = jobDescription;
+    if (!cvText.trim() || !jd.trim()) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tailor-cv", {
+        body: {
+          cvText,
+          jobDescription: jd,
+          tone: cvTone,
+          locale,
+          coverTone,
+          coverLength,
+          mustIncludeKeywords: Array.from(selectedMissing),
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setTailoredCv(data.tailoredCv ?? "");
+      setImprovements(Array.isArray(data.improvements) ? data.improvements : []);
+      setAts(data.ats ?? null);
+      setFit(data.fit ?? null);
+      setKeywordGap(data.keywordGap ?? null);
+      setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
+      setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
+      setSelectedMissing(new Set());
+      toast.success("CV regenerated with your selected keywords");
+      setTimeout(() => {
+        document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Failed to regenerate CV");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMissingKeyword = (k: string) => {
+    setSelectedMissing((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
   };
 
   const handleCopy = async () => {
