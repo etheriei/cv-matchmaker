@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Upload, FileText, Sparkles, Copy, Check, AlertCircle, X,
   Download, ShieldCheck, ListChecks, Target, Quote, Link2, Mail, FileDown,
+  History, Trash2, Save, User, ShieldAlert,
 } from "lucide-react";
+import { diffLines } from "diff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +17,11 @@ import { extractTextFromFile } from "@/lib/extract-text";
 import { generateCvPdf, type CvPdfTemplate } from "@/lib/cv-pdf";
 import { generateCvDocx } from "@/lib/cv-docx";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  listHistory, addHistory, removeHistory, clearHistory,
+  listProfiles, saveProfile, removeProfile,
+  type HistoryEntry, type CvProfile, type TailorResult,
+} from "@/lib/history";
 
 type SectionCheck = {
   hasContactInfo: boolean;
@@ -61,7 +68,15 @@ type CvTone = "concise" | "standard" | "detailed";
 type Locale = "uk" | "us";
 type CoverTone = "formal" | "warm" | "direct";
 type CoverLength = 200 | 300 | 400;
-type CvView = "tailored" | "original" | "compare";
+type CvView = "tailored" | "original" | "compare" | "diff";
+type Language = "en" | "es" | "fr" | "de" | "nl" | "pt" | "it";
+
+const LANGUAGE_LABELS: Record<Language, string> = {
+  en: "English", es: "Español", fr: "Français", de: "Deutsch",
+  nl: "Nederlands", pt: "Português", it: "Italiano",
+};
+
+const MAX_JD_CHARS = 30_000;
 
 const slug = (s: string) =>
   s
@@ -145,15 +160,34 @@ function Index() {
   const [pdfTemplate, setPdfTemplate] = useState<CvPdfTemplate>("ats");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [positioningCopied, setPositioningCopied] = useState(false);
   const [cvTone, setCvTone] = useState<CvTone>("standard");
   const [locale, setLocale] = useState<Locale>("uk");
   const [coverTone, setCoverTone] = useState<CoverTone>("warm");
   const [coverLength, setCoverLength] = useState<CoverLength>(300);
   const [cvView, setCvView] = useState<CvView>("tailored");
   const [selectedMissing, setSelectedMissing] = useState<Set<string>>(new Set());
+  const [language, setLanguage] = useState<Language>("en");
+  const [hiringManagerName, setHiringManagerName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [fabrication, setFabrication] = useState<{ flagged: string[]; note: string } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [profiles, setProfiles] = useState<CvProfile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const blockedHost = isBlockedJobHost(jobUrl);
+
+  useEffect(() => {
+    setHistory(listHistory());
+    setProfiles(listProfiles());
+  }, []);
+
+  const diff = useMemo(() => {
+    if (cvView !== "diff" || !tailoredCv || !cvText) return [];
+    return diffLines(cvText, tailoredCv);
+  }, [cvView, tailoredCv, cvText]);
 
   const handleFile = async (f: File) => {
     setFile(f);
@@ -175,6 +209,60 @@ function Index() {
     } finally {
       setParsing(false);
     }
+  };
+
+  const handleSaveProfile = () => {
+    if (!cvText.trim()) {
+      toast.error("Upload or paste a CV first");
+      return;
+    }
+    const name = window.prompt("Name this CV profile (e.g. Design, Engineering):", file?.name?.replace(/\.[^.]+$/, "") || "");
+    if (name === null) return;
+    saveProfile(name, cvText);
+    setProfiles(listProfiles());
+    toast.success(`Profile "${name || "Untitled"}" saved`);
+  };
+
+  const handleLoadProfile = (id: string) => {
+    const p = profiles.find((x) => x.id === id);
+    if (!p) return;
+    setCvText(p.cvText);
+    setFile(null);
+    toast.success(`Loaded "${p.name}"`);
+  };
+
+  const handleDeleteProfile = (id: string) => {
+    removeProfile(id);
+    setProfiles(listProfiles());
+  };
+
+  const persistRun = (jd: string, result: TailorResult) => {
+    try {
+      addHistory({ jobTitle, jobDescription: jd, cvText, result });
+      setHistory(listHistory());
+    } catch (e) { console.warn(e); }
+  };
+
+  const applyResult = (data: any) => {
+    setTailoredCv(data.tailoredCv ?? "");
+    setImprovements(Array.isArray(data.improvements) ? data.improvements : []);
+    setAts(data.ats ?? null);
+    setFit(data.fit ?? null);
+    setKeywordGap(data.keywordGap ?? null);
+    setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
+    setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
+    setFabrication(data.fabrication ?? null);
+  };
+
+  const restoreFromHistory = (h: HistoryEntry) => {
+    setCvText(h.cvText);
+    setFile(null);
+    setJobDescription(h.jobDescription);
+    setJobTitle(h.jobTitle);
+    applyResult(h.result);
+    setHistoryOpen(false);
+    toast.success("Loaded from history");
+    setTimeout(() => document.getElementById("results")?.scrollIntoView({ behavior: "smooth" }), 100);
   };
 
   const fetchJobFromUrl = async (): Promise<string | null> => {
@@ -239,6 +327,7 @@ function Index() {
     setKeywordGap(null);
     setPositioningLine("");
     setSelectedMissing(new Set());
+    setFabrication(null);
 
     try {
       const { data, error } = await supabase.functions.invoke("tailor-cv", {
@@ -249,18 +338,16 @@ function Index() {
           locale,
           coverTone,
           coverLength,
+          language,
+          hiringManagerName,
+          companyName,
         },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      setTailoredCv(data.tailoredCv ?? "");
-      setImprovements(Array.isArray(data.improvements) ? data.improvements : []);
-      setAts(data.ats ?? null);
-      setFit(data.fit ?? null);
-      setKeywordGap(data.keywordGap ?? null);
-      setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
-      setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
+      applyResult(data);
+      persistRun(jd, data as TailorResult);
 
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
@@ -287,23 +374,53 @@ function Index() {
           locale,
           coverTone,
           coverLength,
+          language,
+          hiringManagerName,
+          companyName,
           mustIncludeKeywords: Array.from(selectedMissing),
         },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setTailoredCv(data.tailoredCv ?? "");
-      setImprovements(Array.isArray(data.improvements) ? data.improvements : []);
-      setAts(data.ats ?? null);
-      setFit(data.fit ?? null);
-      setKeywordGap(data.keywordGap ?? null);
-      setPositioningLine(typeof data.positioningLine === "string" ? data.positioningLine : "");
-      setCoverLetter(typeof data.coverLetter === "string" ? data.coverLetter : "");
+      applyResult(data);
+      persistRun(jd, data as TailorResult);
       setSelectedMissing(new Set());
       toast.success("CV regenerated with your selected keywords");
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
       }, 100);
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Failed to regenerate CV");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerateWithFeedback = async () => {
+    if (!feedback.trim()) {
+      toast.error("Add a short instruction first");
+      return;
+    }
+    const jd = jobDescription;
+    if (!cvText.trim() || !jd.trim()) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tailor-cv", {
+        body: {
+          cvText, jobDescription: jd, tone: cvTone, locale, coverTone, coverLength,
+          language, hiringManagerName, companyName,
+          feedback,
+          mustIncludeKeywords: Array.from(selectedMissing),
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      applyResult(data);
+      persistRun(jd, data as TailorResult);
+      setFeedback("");
+      toast.success("CV regenerated with your feedback");
+      setTimeout(() => document.getElementById("results")?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Failed to regenerate CV");
@@ -327,13 +444,18 @@ function Index() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleCopyPositioning = async () => {
+    await navigator.clipboard.writeText(positioningLine);
+    setPositioningCopied(true);
+    toast.success("Positioning line copied");
+    setTimeout(() => setPositioningCopied(false), 2000);
+  };
+
   const handleDownloadPdf = () => {
     try {
-      generateCvPdf(
-        tailoredCv,
-        buildFileName(tailoredCv || cvText, jobTitle, jobDescription, "pdf", pdfTemplate),
-        pdfTemplate,
-      );
+      const fname = buildFileName(tailoredCv || cvText, jobTitle, jobDescription, "pdf", pdfTemplate);
+      generateCvPdf(tailoredCv, fname, pdfTemplate);
+      toast.success(`Downloaded ${fname}`);
     } catch (e) {
       console.error(e);
       toast.error("Could not generate PDF");
@@ -342,10 +464,9 @@ function Index() {
 
   const handleDownloadDocx = async () => {
     try {
-      await generateCvDocx(
-        tailoredCv,
-        buildFileName(tailoredCv || cvText, jobTitle, jobDescription, "docx"),
-      );
+      const fname = buildFileName(tailoredCv || cvText, jobTitle, jobDescription, "docx");
+      await generateCvDocx(tailoredCv, fname);
+      toast.success(`Downloaded ${fname}`);
     } catch (e) {
       console.error(e);
       toast.error("Could not generate DOCX");
@@ -387,6 +508,15 @@ function Index() {
           <span className="font-semibold tracking-tight text-foreground/90">
             CV<span className="text-muted-foreground">Foundry</span>
           </span>
+          <div className="ml-auto">
+            <Button variant="ghost" size="sm" onClick={() => { setHistory(listHistory()); setHistoryOpen(true); }}>
+              <History className="h-4 w-4" />
+              History
+              {history.length > 0 && (
+                <span className="ml-1 text-xs text-muted-foreground">({history.length})</span>
+              )}
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -404,7 +534,27 @@ function Index() {
         <Card className="p-6 md:p-8 shadow-sm">
           <div className="space-y-6">
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">Your CV</label>
+              <div className="flex items-end justify-between mb-2 gap-2 flex-wrap">
+                <label className="text-sm font-medium text-foreground block">Your CV</label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {profiles.length > 0 && (
+                    <select
+                      className="text-xs rounded border border-border bg-background px-2 py-1 text-foreground"
+                      onChange={(e) => { if (e.target.value) { handleLoadProfile(e.target.value); e.target.value = ""; } }}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Load profile…</option>
+                      {profiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <Button type="button" variant="ghost" size="sm" onClick={handleSaveProfile} disabled={!cvText.trim()}>
+                    <Save className="h-3.5 w-3.5" />
+                    Save as profile
+                  </Button>
+                </div>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -429,6 +579,12 @@ function Index() {
                       {parsing ? "Reading file…" : "Click to replace"}
                     </span>
                   </>
+                ) : cvText ? (
+                  <>
+                    <FileText className="h-6 w-6 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">CV loaded ({cvText.length.toLocaleString()} chars)</span>
+                    <span className="text-xs text-muted-foreground">Click to upload a different file</span>
+                  </>
                 ) : (
                   <>
                     <Upload className="h-6 w-6 text-muted-foreground" />
@@ -437,6 +593,23 @@ function Index() {
                   </>
                 )}
               </button>
+              {profiles.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profiles.map((p) => (
+                    <span key={p.id} className="text-xs px-2 py-1 rounded border border-border text-foreground inline-flex items-center gap-1">
+                      <User className="h-3 w-3" /> {p.name}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProfile(p.id)}
+                        className="ml-1 text-muted-foreground hover:text-destructive"
+                        aria-label={`Delete profile ${p.name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -518,6 +691,11 @@ function Index() {
           placeholder="Paste the full job description here…"
           className="mt-2 min-h-[160px] text-sm"
         />
+        <div className="mt-1 flex justify-end">
+          <span className={`text-xs ${jobDescription.length > MAX_JD_CHARS ? "text-destructive" : "text-muted-foreground"}`}>
+            {jobDescription.length.toLocaleString()} / {MAX_JD_CHARS.toLocaleString()} characters
+          </span>
+        </div>
       </details>
             </div>
 
@@ -590,6 +768,38 @@ function Index() {
                       ~{l}w
                     </button>
                   ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Output language</label>
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as Language)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+                >
+                  {(Object.keys(LANGUAGE_LABELS) as Language[]).map((l) => (
+                    <option key={l} value={l}>{LANGUAGE_LABELS[l]}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Hiring manager (optional)</label>
+                  <Input
+                    value={hiringManagerName}
+                    onChange={(e) => setHiringManagerName(e.target.value)}
+                    placeholder="e.g. Jane Smith"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Company (optional)</label>
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="e.g. Acme Corp"
+                    className="h-8 text-xs"
+                  />
                 </div>
               </div>
             </div>
@@ -666,12 +876,48 @@ function Index() {
 
             {positioningLine && (
               <Card className="p-6 md:p-8 shadow-sm bg-muted/40">
-                <h2 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                  <Quote className="h-4 w-4" /> Role positioning
-                </h2>
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Quote className="h-4 w-4" /> Role positioning
+                  </h2>
+                  <Button variant="ghost" size="sm" onClick={handleCopyPositioning}>
+                    {positioningCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
                 <p className="text-base md:text-lg text-foreground leading-snug">
                   {positioningLine}
                 </p>
+              </Card>
+            )}
+
+            {fabrication && (
+              <Card className={`p-6 md:p-8 shadow-sm ${fabrication.flagged.length > 0 ? "border-destructive/50" : ""}`}>
+                <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+                  {fabrication.flagged.length > 0
+                    ? <ShieldAlert className="h-5 w-5 text-destructive" />
+                    : <ShieldCheck className="h-5 w-5 text-foreground" />}
+                  Fabrication check
+                </h2>
+                {fabrication.note && (
+                  <p className="text-sm text-muted-foreground mb-3">{fabrication.note}</p>
+                )}
+                {fabrication.flagged.length === 0 ? (
+                  <p className="text-sm text-foreground">No unsupported claims detected. Always double-check before submitting.</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      These claims appear in the tailored CV but aren't clearly supported by your original. Review each one and remove or edit any that don't apply to you.
+                    </p>
+                    <ul className="space-y-1.5">
+                      {fabrication.flagged.map((f, i) => (
+                        <li key={i} className="text-sm text-foreground flex gap-2">
+                          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                          <span>“{f}”</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </Card>
             )}
 
@@ -870,7 +1116,7 @@ function Index() {
                 <h2 className="text-lg font-semibold text-foreground">Tailored CV</h2>
                 <div className="flex gap-2 flex-wrap items-center">
                   <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
-                    {(["tailored", "original", "compare"] as CvView[]).map((v) => (
+                    {(["tailored", "original", "compare", "diff"] as CvView[]).map((v) => (
                       <button
                         key={v}
                         type="button"
@@ -945,6 +1191,25 @@ function Index() {
                   </div>
                 </div>
               )}
+              {cvView === "diff" && (
+                <div className="rounded border border-border p-3 max-h-[600px] overflow-auto font-mono text-xs leading-relaxed">
+                  {diff.length === 0 && (
+                    <p className="text-muted-foreground">No differences to show.</p>
+                  )}
+                  {diff.map((part, i) => (
+                    <pre
+                      key={i}
+                      className={`whitespace-pre-wrap ${
+                        part.added ? "bg-green-500/10 text-green-700 dark:text-green-400"
+                        : part.removed ? "bg-red-500/10 text-red-700 dark:text-red-400 line-through opacity-70"
+                        : "text-muted-foreground"
+                      }`}
+                    >
+                      {part.value}
+                    </pre>
+                  ))}
+                </div>
+              )}
             </Card>
 
             {coverLetter && (
@@ -984,9 +1249,116 @@ function Index() {
                 </ul>
               </Card>
             )}
+
+            <Card className="p-6 md:p-8 shadow-sm">
+              <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Refine with feedback
+              </h2>
+              <p className="text-xs text-muted-foreground mb-3">
+                Not quite right? Tell the AI how to adjust and regenerate.
+                e.g. “more concise”, “stronger on leadership”, “less technical, more strategy”.
+              </p>
+              <Textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="What should be different this time?"
+                className="min-h-[80px] text-sm mb-3"
+                maxLength={500}
+              />
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleRegenerateWithFeedback} disabled={loading || !feedback.trim()}>
+                  <Sparkles className="h-4 w-4" />
+                  {loading ? "Regenerating…" : "Regenerate with feedback"}
+                </Button>
+              </div>
+            </Card>
+          </section>
+        )}
+
+        {!tailoredCv && !loading && (
+          <section className="mt-10 text-center text-sm text-muted-foreground">
+            <p>Ready when you are. Your tailored CV, cover letter, ATS report and fabrication check will appear here.</p>
           </section>
         )}
       </main>
+
+      {historyOpen && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/40"
+          onClick={() => setHistoryOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="History"
+        >
+          <div
+            className="w-full max-w-md h-full bg-background border-l border-border shadow-xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 flex items-center justify-between px-5 py-3 border-b border-border bg-background">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <History className="h-4 w-4" /> History
+              </h2>
+              <div className="flex items-center gap-1">
+                {history.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm("Clear all history?")) {
+                        clearHistory();
+                        setHistory([]);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Clear
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 space-y-2">
+              {history.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No runs yet. Tailored CVs will show up here.
+                </p>
+              )}
+              {history.map((h) => (
+                <div key={h.id} className="rounded border border-border p-3 hover:bg-muted/40 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => restoreFromHistory(h)}
+                      className="text-left flex-1"
+                    >
+                      <div className="text-sm font-medium text-foreground">
+                        {h.jobTitle || "Untitled role"}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(h.createdAt).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {h.jobDescription.slice(0, 120)}…
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { removeHistory(h.id); setHistory(listHistory()); }}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label="Delete entry"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="border-t border-border/60 mt-16 py-6 text-center text-xs text-muted-foreground">
         CVFoundry · Built with Lovable

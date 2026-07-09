@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,11 +7,33 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_LIMIT_MAX = 10;
+
+async function hashIp(ip: string): Promise<string> {
+  const data = new TextEncoder().encode(`cvfoundry:${ip}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const LANGUAGES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  nl: "Dutch",
+  pt: "Portuguese",
+  it: "Italian",
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { cvText, jobDescription, tone, locale, coverTone, coverLength, mustIncludeKeywords } = await req.json();
+    const {
+      cvText, jobDescription, tone, locale, coverTone, coverLength,
+      mustIncludeKeywords, hiringManagerName, companyName, language, feedback,
+    } = await req.json();
     const MAX_CV = 30_000;
     const MAX_JD = 30_000;
     if (typeof cvText !== "string" || cvText.trim().length === 0) {
@@ -34,6 +57,37 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ---- Rate limiting (per-IP, per-hour) --------------------------------
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (SUPABASE_URL && SERVICE_ROLE) {
+      try {
+        const ip = (req.headers.get("x-forwarded-for")?.split(",")[0].trim())
+          || req.headers.get("cf-connecting-ip") || "unknown";
+        const ipHash = await hashIp(ip);
+        const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+        const { count } = await admin
+          .from("rate_limits")
+          .select("id", { count: "exact", head: true })
+          .eq("ip_hash", ipHash)
+          .eq("action", "tailor-cv")
+          .gte("created_at", since);
+        if ((count ?? 0) >= RATE_LIMIT_MAX) {
+          return new Response(
+            JSON.stringify({ error: `Rate limit reached: max ${RATE_LIMIT_MAX} tailoring runs per hour. Please try again later.` }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        await admin.from("rate_limits").insert({ ip_hash: ipHash, action: "tailor-cv" });
+      } catch (e) {
+        console.warn("rate-limit check failed (non-fatal):", e);
+      }
+    }
+    // ----------------------------------------------------------------------
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -49,6 +103,11 @@ Deno.serve(async (req) => {
           .map((k: string) => k.trim())
           .slice(0, 25)
       : [];
+    const langCode = typeof language === "string" && LANGUAGES[language] ? language : "en";
+    const langName = LANGUAGES[langCode];
+    const hmName = typeof hiringManagerName === "string" ? hiringManagerName.trim().slice(0, 80) : "";
+    const coName = typeof companyName === "string" ? companyName.trim().slice(0, 120) : "";
+    const userFeedback = typeof feedback === "string" ? feedback.trim().slice(0, 500) : "";
 
     const toneGuide = {
       concise: "Be highly concise: short bullets, no filler, prefer 1 line per bullet.",
@@ -69,12 +128,22 @@ Deno.serve(async (req) => {
 Rewrite the CV to better match the job description WITHOUT fabricating experience.
 Use plain text only. NEVER use markdown formatting: no asterisks (*), no underscores (_), no backticks, no hashes (#), no bold, no italics. Use plain UPPERCASE for section headings and hyphens (-) for bullets.
 STRICT PUNCTUATION RULE: NEVER use em dashes (—) or en dashes (–) anywhere in any output field. Do not use them in the tailored CV, improvements, or ATS report. Replace any dash-style pause with a comma, a period, a colon, or simply rewrite the sentence. Only the regular hyphen-minus (-) is allowed, and only for bullet points or compound words.
+OUTPUT LANGUAGE: Write EVERY output field (tailoredCv, improvements, ats.*, fit.*, keywordGap.*, positioningLine, coverLetter) in ${langName}. Keep proper nouns, technology names, and brand names in their original form.
 TONE: ${toneGuide}
 LOCALE: ${localeGuide}
 COVER LETTER TONE: ${coverToneGuide}
-COVER LETTER LENGTH: target approximately ${cLen} words (acceptable range ${cLen - 40}-${cLen + 40}).${
+COVER LETTER LENGTH: target approximately ${cLen} words (acceptable range ${cLen - 40}-${cLen + 40}).
+COVER LETTER SALUTATION: ${
+      hmName
+        ? `Address the letter directly to "${hmName}" (e.g. "Dear ${hmName},").`
+        : "Use a neutral greeting such as \"Dear Hiring Team,\" — do NOT invent a name."
+    }${coName ? ` Reference the company by name ("${coName}") at least once in the opening paragraph.` : ""}${
       includeKw.length > 0
         ? `\nMUST-INCLUDE KEYWORDS: The user has confirmed these skills/keywords genuinely apply to them. Weave EVERY one of the following into the tailored CV naturally (in the summary, skills, or a relevant experience bullet), without fabricating employers, dates, or projects: ${includeKw.join(", ")}.`
+        : ""
+    }${
+      userFeedback
+        ? `\nUSER FEEDBACK ON A PREVIOUS ATTEMPT: The user asked for the following adjustments — apply them to this revision: "${userFeedback}".`
         : ""
     }`;
 
@@ -238,6 +307,67 @@ Return a tailored CV, key improvements, a full ATS report, a fit score with reas
     if (typeof args.coverLetter === "string") {
       args.coverLetter = stripMd(args.coverLetter);
     }
+
+    // ---- Fabrication guardrail (lightweight second pass) -----------------
+    args.fabrication = { flagged: [] as string[], note: "" };
+    try {
+      const fabRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a strict fact-checker. You compare a TAILORED CV against the ORIGINAL CV and identify any specific factual claims (employers, job titles, dates, degrees, certifications, quantified results/metrics, tools/technologies) that appear in the tailored CV but are NOT clearly supported by the original CV. Ignore stylistic rewording and reasonable synonyms. Return concise flagged claims verbatim from the tailored CV.",
+            },
+            {
+              role: "user",
+              content: `ORIGINAL CV:\n${cvText}\n\nTAILORED CV:\n${args.tailoredCv}`,
+            },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "report_fabrications",
+              description: "Report any unsupported claims in the tailored CV.",
+              parameters: {
+                type: "object",
+                properties: {
+                  flagged: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Short verbatim excerpts (max ~15 words each) from the tailored CV that are not supported by the original. Empty array if all is grounded.",
+                  },
+                  note: {
+                    type: "string",
+                    description: "One-sentence summary of the check outcome.",
+                  },
+                },
+                required: ["flagged", "note"],
+                additionalProperties: false,
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "report_fabrications" } },
+        }),
+      });
+      if (fabRes.ok) {
+        const fabData = await fabRes.json();
+        const fabCall = fabData.choices?.[0]?.message?.tool_calls?.[0];
+        if (fabCall) {
+          const fabArgs = JSON.parse(fabCall.function.arguments);
+          args.fabrication = {
+            flagged: Array.isArray(fabArgs.flagged) ? fabArgs.flagged.map((s: string) => stripMd(String(s))).slice(0, 12) : [],
+            note: stripMd(String(fabArgs.note ?? "")),
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("fabrication check failed (non-fatal):", e);
+    }
+    // ----------------------------------------------------------------------
 
     return new Response(JSON.stringify(args), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
