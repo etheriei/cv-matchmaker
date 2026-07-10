@@ -474,10 +474,26 @@ function Index() {
   };
 
   const handleCopyCover = async () => {
-    await navigator.clipboard.writeText(coverLetter);
-    setCoverCopied(true);
-    toast.success("Cover letter copied");
-    setTimeout(() => setCoverCopied(false), 2000);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(coverLetter);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = coverLetter;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCoverCopied(true);
+      toast.success("Cover letter copied");
+      setTimeout(() => setCoverCopied(false), 2000);
+    } catch (e) {
+      console.error("copy cover letter failed:", e);
+      toast.error("Could not copy cover letter");
+    }
   };
 
   const scoreColor = (score: number) =>
