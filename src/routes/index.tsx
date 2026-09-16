@@ -1131,13 +1131,19 @@ function Index() {
               <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <h2 className="text-lg font-semibold text-foreground">Tailored CV</h2>
                 <div className="flex gap-2 flex-wrap items-center">
-                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+                  <div className="inline-flex items-center gap-0.5 rounded-full bg-muted/70 p-1 text-xs shadow-inner" role="tablist" aria-label="CV view">
                     {(["tailored", "original", "compare", "diff"] as CvView[]).map((v) => (
                       <button
                         key={v}
                         type="button"
+                        role="tab"
+                        aria-selected={cvView === v}
                         onClick={() => setCvView(v)}
-                        className={`px-2.5 py-1.5 capitalize ${cvView === v ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"} ${v !== "tailored" ? "border-l border-border" : ""}`}
+                        className={`rounded-full px-3.5 py-1.5 font-medium capitalize transition-all duration-200 ${
+                          cvView === v
+                            ? "bg-foreground text-background shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
                       >
                         {v}
                       </button>
@@ -1145,25 +1151,24 @@ function Index() {
                   </div>
                   <div className="inline-flex items-center gap-2">
                     <span className="text-xs text-muted-foreground hidden sm:inline">PDF style:</span>
-                    <div className="inline-flex rounded-md border border-border overflow-hidden text-xs" role="group" aria-label="PDF template">
-                      <button
-                        type="button"
-                        onClick={() => setPdfTemplate("ats")}
-                        title="Plain, single-column, maximum ATS compatibility"
-                        aria-pressed={pdfTemplate === "ats"}
-                        className={`px-2.5 py-1.5 ${pdfTemplate === "ats" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
-                      >
-                        ATS
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPdfTemplate("modern")}
-                        title="Dark header band with your name, subtle accents"
-                        aria-pressed={pdfTemplate === "modern"}
-                        className={`px-2.5 py-1.5 border-l border-border ${pdfTemplate === "modern" ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-muted"}`}
-                      >
-                        Modern
-                      </button>
+                    <div className="inline-flex items-center gap-0.5 rounded-full bg-muted/70 p-1 text-xs shadow-inner" role="tablist" aria-label="PDF template">
+                      {(["ats", "modern"] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          role="tab"
+                          aria-selected={pdfTemplate === t}
+                          onClick={() => setPdfTemplate(t)}
+                          title={t === "ats" ? "Plain, single-column, maximum ATS compatibility" : "Dark header band with your name, subtle accents"}
+                          className={`rounded-full px-3.5 py-1.5 font-medium uppercase tracking-wide transition-all duration-200 ${
+                            pdfTemplate === t
+                              ? "bg-foreground text-background shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={handleCopy}>
